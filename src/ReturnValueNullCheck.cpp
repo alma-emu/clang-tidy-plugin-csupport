@@ -148,22 +148,114 @@ bool ReturnValueNullCheck::isNullCheckedWithIfStmtVarEqNull(
   const Stmt *FuncLineStmtNode = getFuncLineStmt(Result);
   if (!FuncLineStmtNode)
     return false;
+  // ReferenceNode's next node will be checked whether it is IfStmt or not.
+  const Stmt *ReferenceNode = FuncLineStmtNode;
 
   // get code block (CompoundStmt) node which has FuncLineStmtNode
   const CompoundStmt *CompoundStmtNode;
   {
-    auto CompoundParents = Result.Context->getParents(*FuncLineStmtNode);
-    if (CompoundParents.empty())
+    auto ParentNodesOfFuncLineStmt =
+        Result.Context->getParents(*FuncLineStmtNode);
+    if (ParentNodesOfFuncLineStmt.empty())
       return false;
 
-    CompoundStmtNode = CompoundParents[0].get<CompoundStmt>();
+    const Stmt *ParentNodeOfFuncLineStmt =
+        ParentNodesOfFuncLineStmt[0].get<Stmt>();
+    // To get the CompoundStmt node, we have to think additionally about
+    // CaseStmt.
+    //
+    // As already mentioned in the function comments, basically the parent node
+    // of FuncLineStmtNode is the CompoundStmt node.
+    // But, if the CaseStmt is present, it must be considered separately.
+    //
+    //
+    // About CaseStmt
+    //
+    // ------------------------
+    // - Sample C Code
+    // ------------------------
+    // <code>
+    // char* p = NULL;
+    // switch (x) {
+    //   case 10:
+    //     p = malloc(5);
+    //     if (p == NULL)
+    //       return;
+    //     free(p);
+    //     break;
+    //   default:
+    //     break;
+    // }
+    // <endcode>
+    //
+    // ------------------------
+    // - Clang AST
+    // ------------------------
+    // CompoundStmt
+    //  |- CaseStmt
+    //  | |- funcLineStmt
+    //  |- IfStmt
+    //  ...
+    //
+    // If `case`'s next line is the FuncLineStmtNode, the FuncLineStmtNode's
+    // parent node is the CaseStmt node and the CaseStmt node's parent node is
+    // the CompoundStmt node which we are looking for.
+    //
+    // In other case.
+    //
+    // ------------------------
+    // - Sample C Code
+    // ------------------------
+    // <code>
+    // char* p = NULL;
+    // switch (x) {
+    //   case 10:
+    //     printf("hello");   // this `printf` function is added.
+    //     p = malloc(5);
+    //     if (p == NULL)
+    //       return;
+    //     free(p);
+    //     break;
+    //   default:
+    //     break;
+    // }
+    // <endcode>
+    //
+    // ------------------------
+    // - Clang AST
+    // ------------------------
+    // CompoundStmt
+    //  |- CaseStmt
+    //  | |- printf
+    //  |- funcLineStmt
+    //  |- IfStmt
+    //  ...
+    //
+    // If `case`'s next line is not the FuncLineStmtNode like above, the
+    // FuncLineStmtNode's parent node is the CompoundStmt node which we are
+    // looking for.
+    if (isa<CaseStmt>(ParentNodeOfFuncLineStmt)) {
+      const Stmt *CaseStmtNode = ParentNodeOfFuncLineStmt;
+      // ReferenceNode is overwritten by the CaseStmt node.
+      ReferenceNode = CaseStmtNode;
+      // get the CompoundStmt node which is the parent node of the CaseStmt
+      // node.
+      auto ParentNodesOfCaseStmt = Result.Context->getParents(*CaseStmtNode);
+      if (ParentNodesOfCaseStmt.empty())
+        return false;
+      CompoundStmtNode = ParentNodesOfCaseStmt[0].get<CompoundStmt>();
+    } else {
+      // get the CompoundStmt node which is the parent node of the
+      // FuncLineStmtNode
+      CompoundStmtNode = dyn_cast<CompoundStmt>(ParentNodeOfFuncLineStmt);
+    }
   }
   if (!CompoundStmtNode)
     return false;
 
   // check this is not end of code block
   auto It = std::find(CompoundStmtNode->body_begin(),
-                      CompoundStmtNode->body_end(), FuncLineStmtNode);
+                      CompoundStmtNode->body_end(), ReferenceNode);
   if (It == CompoundStmtNode->body_end() ||
       (It + 1) == CompoundStmtNode->body_end())
     return false;
@@ -249,22 +341,50 @@ bool ReturnValueNullCheck::isNullCheckedWithIfStmtVarEq0(
   const Stmt *FuncLineStmtNode = getFuncLineStmt(Result);
   if (!FuncLineStmtNode)
     return false;
+  // ReferenceNode's next node will be checked whether it is IfStmt or not.
+  const Stmt *ReferenceNode = FuncLineStmtNode;
 
   // get code block (CompoundStmt) node which has FuncLineStmtNode
   const CompoundStmt *CompoundStmtNode;
   {
-    auto CompoundParents = Result.Context->getParents(*FuncLineStmtNode);
-    if (CompoundParents.empty())
+    auto ParentNodesOfFuncLineStmt =
+        Result.Context->getParents(*FuncLineStmtNode);
+    if (ParentNodesOfFuncLineStmt.empty())
       return false;
 
-    CompoundStmtNode = CompoundParents[0].get<CompoundStmt>();
+    const Stmt *ParentNodeOfFuncLineStmt =
+        ParentNodesOfFuncLineStmt[0].get<Stmt>();
+    // To get the CompoundStmt node, we have to think additionally about
+    // CaseStmt.
+    //
+    // As already mentioned in the function comments, basically the parent node
+    // of FuncLineStmtNode is the CompoundStmt node.
+    // But, if the CaseStmt is present, it must be considered separately.
+    //
+    // For details, please read the comments in the function,
+    // `isNullCheckedWithIfStmtVarEqNull()`.
+    if (isa<CaseStmt>(ParentNodeOfFuncLineStmt)) {
+      const Stmt *CaseStmtNode = ParentNodeOfFuncLineStmt;
+      // ReferenceNode is overwritten by the CaseStmt node.
+      ReferenceNode = CaseStmtNode;
+      // get the CompoundStmt node which is the parent node of the CaseStmt
+      // node.
+      auto ParentNodesOfCaseStmt = Result.Context->getParents(*CaseStmtNode);
+      if (ParentNodesOfCaseStmt.empty())
+        return false;
+      CompoundStmtNode = ParentNodesOfCaseStmt[0].get<CompoundStmt>();
+    } else {
+      // get the CompoundStmt node which is the parent node of the
+      // FuncLineStmtNode
+      CompoundStmtNode = dyn_cast<CompoundStmt>(ParentNodeOfFuncLineStmt);
+    }
   }
   if (!CompoundStmtNode)
     return false;
 
   // check this is not end of code block
   auto It = std::find(CompoundStmtNode->body_begin(),
-                      CompoundStmtNode->body_end(), FuncLineStmtNode);
+                      CompoundStmtNode->body_end(), ReferenceNode);
   if (It == CompoundStmtNode->body_end() ||
       (It + 1) == CompoundStmtNode->body_end())
     return false;
@@ -325,8 +445,8 @@ bool ReturnValueNullCheck::isNullCheckedWithIfStmtVarEq0(
 /// ------------------------
 /// CompoundStmt ................ Compound Statement (Code Block) node
 /// |-Stmt ......................   Stmt node bound to `funcLineStmt`
-/// |  - (node)..................     var `buf`, node bound to `returnValueVar`
-/// |    ...
+/// |  - (node)..................     var `buf`, node bound to
+/// `returnValueVar` |    ...
 /// |-IfStmt ....................   If Statement node
 /// | |-UnaryOperator '!' .......
 /// | |  -ImplicitCastExpr ......     implicit type conversion node
@@ -347,22 +467,50 @@ bool ReturnValueNullCheck::isNullCheckedWithIfStmtNotVar(
   const Stmt *FuncLineStmtNode = getFuncLineStmt(Result);
   if (!FuncLineStmtNode)
     return false;
+  // ReferenceNode's next node will be checked whether it is IfStmt or not.
+  const Stmt *ReferenceNode = FuncLineStmtNode;
 
   // get code block (CompoundStmt) node which has FuncLineStmtNode
   const CompoundStmt *CompoundStmtNode;
   {
-    auto CompoundParents = Result.Context->getParents(*FuncLineStmtNode);
-    if (CompoundParents.empty())
+    auto ParentNodesOfFuncLineStmt =
+        Result.Context->getParents(*FuncLineStmtNode);
+    if (ParentNodesOfFuncLineStmt.empty())
       return false;
 
-    CompoundStmtNode = CompoundParents[0].get<CompoundStmt>();
+    const Stmt *ParentNodeOfFuncLineStmt =
+        ParentNodesOfFuncLineStmt[0].get<Stmt>();
+    // To get the CompoundStmt node, we have to think additionally about
+    // CaseStmt.
+    //
+    // As already mentioned in the function comments, basically the parent node
+    // of FuncLineStmtNode is the CompoundStmt node.
+    // But, if the CaseStmt is present, it must be considered separately.
+    //
+    // For details, please read the comments in the function,
+    // `isNullCheckedWithIfStmtVarEqNull()`.
+    if (isa<CaseStmt>(ParentNodeOfFuncLineStmt)) {
+      const Stmt *CaseStmtNode = ParentNodeOfFuncLineStmt;
+      // ReferenceNode is overwritten by the CaseStmt node.
+      ReferenceNode = CaseStmtNode;
+      // get the CompoundStmt node which is the parent node of the CaseStmt
+      // node.
+      auto ParentNodesOfCaseStmt = Result.Context->getParents(*CaseStmtNode);
+      if (ParentNodesOfCaseStmt.empty())
+        return false;
+      CompoundStmtNode = ParentNodesOfCaseStmt[0].get<CompoundStmt>();
+    } else {
+      // get the CompoundStmt node which is the parent node of the
+      // FuncLineStmtNode
+      CompoundStmtNode = dyn_cast<CompoundStmt>(ParentNodeOfFuncLineStmt);
+    }
   }
   if (!CompoundStmtNode)
     return false;
 
   // check this is not end of code block
   auto It = std::find(CompoundStmtNode->body_begin(),
-                      CompoundStmtNode->body_end(), FuncLineStmtNode);
+                      CompoundStmtNode->body_end(), ReferenceNode);
   if (It == CompoundStmtNode->body_end() ||
       (It + 1) == CompoundStmtNode->body_end())
     return false;
@@ -464,8 +612,8 @@ bool ReturnValueNullCheck::isNullCheckedWithCondStmtThatSetVar(
   // \code
   // if (!((p = func()) != NULL)) ...
   // \endcode
-  // In these cases, return_value_var is already null checked. So return `true`,
-  // no matter what other BinaryOperators or UnaryOperators do.
+  // In these cases, return_value_var is already null checked. So return
+  // `true`, no matter what other BinaryOperators or UnaryOperators do.
   //
   // Additionally, it may be implicitly assumed that the ParentStmtNode's
   // ancestor node have an IfStmt (WhileStmt, DoStmt) node in most cases. This
