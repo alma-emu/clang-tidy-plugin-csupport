@@ -13,8 +13,8 @@ ReturnValueNullCheck::ReturnValueNullCheck(StringRef Name,
 
 ///
 void ReturnValueNullCheck::registerMatchers(MatchFinder *Finder) {
-  // If a function is not cast, there are functions for which implicit type
-  // conversion occurs and functions for which it does not.
+  // If a function is without C-style casting, there are two types of functions.
+  // One has the implicit type conversion, and the other dosen't have it.
   //
   // - each functions' Clang AST without casting
   // malloc, etc ... return_value_var(※ 1) has ImplicitCastExpr(※ 2)
@@ -133,7 +133,7 @@ void ReturnValueNullCheck::check(const MatchFinder::MatchResult &Result) {
 /// | |        -IntegerLiteral ..     integer 0
 /// |    ...
 ///
-/// MEMO: To get Clang AST, please use `(node)->dump()` which outputs
+/// MEMO: To get Clang AST, please use `(some_node)->dump()` which outputs
 /// the node's Clang AST to stdout.
 bool ReturnValueNullCheck::isNullCheckedWithIfStmtVarEqNull(
     const MatchFinder::MatchResult &Result) {
@@ -162,11 +162,13 @@ bool ReturnValueNullCheck::isNullCheckedWithIfStmtVarEqNull(
     const Stmt *ParentNodeOfFuncLineStmt =
         ParentNodesOfFuncLineStmt[0].get<Stmt>();
     // To get the CompoundStmt node, we have to think additionally about
-    // CaseStmt.
+    // `switch` statement, which has the CaseStmt node for the case labels and
+    // the DefaultStmt node for the default label.
     //
     // As already mentioned in the function comments, basically the parent node
     // of FuncLineStmtNode is the CompoundStmt node.
-    // But, if the CaseStmt is present, it must be considered separately.
+    // But, if the CaseStmt node or the DefaultStmt node is present, it must be
+    // considered separately.
     //
     //
     // About CaseStmt
@@ -197,9 +199,9 @@ bool ReturnValueNullCheck::isNullCheckedWithIfStmtVarEqNull(
     //  |- IfStmt
     //  ...
     //
-    // If `case`'s next line is the FuncLineStmtNode, the FuncLineStmtNode's
-    // parent node is the CaseStmt node and the CaseStmt node's parent node is
-    // the CompoundStmt node which we are looking for.
+    // If `case` label's next line is the FuncLineStmtNode, the
+    // FuncLineStmtNode's parent node is the CaseStmt node and the CaseStmt
+    // node's parent node is the CompoundStmt node which we are looking for.
     //
     // In other case.
     //
@@ -231,16 +233,21 @@ bool ReturnValueNullCheck::isNullCheckedWithIfStmtVarEqNull(
     //  |- IfStmt
     //  ...
     //
-    // If `case`'s next line is not the FuncLineStmtNode like above, the
+    // If `case` label's next line is not the FuncLineStmtNode like above, the
     // FuncLineStmtNode's parent node is the CompoundStmt node which we are
     // looking for.
-    if (isa<CaseStmt>(ParentNodeOfFuncLineStmt)) {
-      const Stmt *CaseStmtNode = ParentNodeOfFuncLineStmt;
+    //
+    // And, the DefaultStmt node for the default label is the same as the
+    // CaseStmt node for the case labels.
+    if (isa<CaseStmt>(ParentNodeOfFuncLineStmt) ||
+        isa<DefaultStmt>(ParentNodeOfFuncLineStmt)) {
+      const Stmt *CaseStmtRelatedNode = ParentNodeOfFuncLineStmt;
       // ReferenceNode is overwritten by the CaseStmt node.
-      ReferenceNode = CaseStmtNode;
-      // get the CompoundStmt node which is the parent node of the CaseStmt
-      // node.
-      auto ParentNodesOfCaseStmt = Result.Context->getParents(*CaseStmtNode);
+      ReferenceNode = CaseStmtRelatedNode;
+      // get the CompoundStmt node which is the parent node of the
+      // CaseStmt/DefaultStmt node.
+      auto ParentNodesOfCaseStmt =
+          Result.Context->getParents(*CaseStmtRelatedNode);
       if (ParentNodesOfCaseStmt.empty())
         return false;
       CompoundStmtNode = ParentNodesOfCaseStmt[0].get<CompoundStmt>();
@@ -326,7 +333,7 @@ bool ReturnValueNullCheck::isNullCheckedWithIfStmtVarEqNull(
 /// | |    -IntegerLiteral ......     integer 0
 /// |    ...
 ///
-/// MEMO: To get Clang AST, please use `(node)->dump()` which outputs
+/// MEMO: To get Clang AST, please use `(some_node)->dump()` which outputs
 /// the node's Clang AST to stdout.
 bool ReturnValueNullCheck::isNullCheckedWithIfStmtVarEq0(
     const MatchFinder::MatchResult &Result) {
@@ -355,21 +362,25 @@ bool ReturnValueNullCheck::isNullCheckedWithIfStmtVarEq0(
     const Stmt *ParentNodeOfFuncLineStmt =
         ParentNodesOfFuncLineStmt[0].get<Stmt>();
     // To get the CompoundStmt node, we have to think additionally about
-    // CaseStmt.
+    // `switch` statement, which has CaseStmt for case labels and DefaultStmt
+    // for default label.
     //
     // As already mentioned in the function comments, basically the parent node
     // of FuncLineStmtNode is the CompoundStmt node.
-    // But, if the CaseStmt is present, it must be considered separately.
+    // But, if the CaseStmt or DefaultStmt is present, it must be considered
+    // separately.
     //
     // For details, please read the comments in the function,
     // `isNullCheckedWithIfStmtVarEqNull()`.
-    if (isa<CaseStmt>(ParentNodeOfFuncLineStmt)) {
-      const Stmt *CaseStmtNode = ParentNodeOfFuncLineStmt;
+    if (isa<CaseStmt>(ParentNodeOfFuncLineStmt) ||
+        isa<DefaultStmt>(ParentNodeOfFuncLineStmt)) {
+      const Stmt *CaseStmtRelatedNode = ParentNodeOfFuncLineStmt;
       // ReferenceNode is overwritten by the CaseStmt node.
-      ReferenceNode = CaseStmtNode;
-      // get the CompoundStmt node which is the parent node of the CaseStmt
-      // node.
-      auto ParentNodesOfCaseStmt = Result.Context->getParents(*CaseStmtNode);
+      ReferenceNode = CaseStmtRelatedNode;
+      // get the CompoundStmt node which is the parent node of the
+      // CaseStmt/DefaultStmt node.
+      auto ParentNodesOfCaseStmt =
+          Result.Context->getParents(*CaseStmtRelatedNode);
       if (ParentNodesOfCaseStmt.empty())
         return false;
       CompoundStmtNode = ParentNodesOfCaseStmt[0].get<CompoundStmt>();
@@ -452,7 +463,7 @@ bool ReturnValueNullCheck::isNullCheckedWithIfStmtVarEq0(
 /// | |  -ImplicitCastExpr ......     implicit type conversion node
 /// | |    -DeclRefExpr .........     reference to the variable `buf`
 ///
-/// MEMO: To get Clang AST, please use `(node)->dump()` which outputs
+/// MEMO: To get Clang AST, please use `(some_node)->dump()` which outputs
 /// the node's Clang AST to stdout.
 bool ReturnValueNullCheck::isNullCheckedWithIfStmtNotVar(
     const MatchFinder::MatchResult &Result) {
@@ -481,21 +492,25 @@ bool ReturnValueNullCheck::isNullCheckedWithIfStmtNotVar(
     const Stmt *ParentNodeOfFuncLineStmt =
         ParentNodesOfFuncLineStmt[0].get<Stmt>();
     // To get the CompoundStmt node, we have to think additionally about
-    // CaseStmt.
+    // `switch` statement, which has CaseStmt for case labels and DefaultStmt
+    // for default label.
     //
     // As already mentioned in the function comments, basically the parent node
     // of FuncLineStmtNode is the CompoundStmt node.
-    // But, if the CaseStmt is present, it must be considered separately.
+    // But, if the CaseStmt or DefaultStmt is present, it must be considered
+    // separately.
     //
     // For details, please read the comments in the function,
     // `isNullCheckedWithIfStmtVarEqNull()`.
-    if (isa<CaseStmt>(ParentNodeOfFuncLineStmt)) {
-      const Stmt *CaseStmtNode = ParentNodeOfFuncLineStmt;
+    if (isa<CaseStmt>(ParentNodeOfFuncLineStmt) ||
+        isa<DefaultStmt>(ParentNodeOfFuncLineStmt)) {
+      const Stmt *CaseStmtRelatedNode = ParentNodeOfFuncLineStmt;
       // ReferenceNode is overwritten by the CaseStmt node.
-      ReferenceNode = CaseStmtNode;
-      // get the CompoundStmt node which is the parent node of the CaseStmt
-      // node.
-      auto ParentNodesOfCaseStmt = Result.Context->getParents(*CaseStmtNode);
+      ReferenceNode = CaseStmtRelatedNode;
+      // get the CompoundStmt node which is the parent node of the
+      // CaseStmt/DefaultStmt node.
+      auto ParentNodesOfCaseStmt =
+          Result.Context->getParents(*CaseStmtRelatedNode);
       if (ParentNodesOfCaseStmt.empty())
         return false;
       CompoundStmtNode = ParentNodesOfCaseStmt[0].get<CompoundStmt>();
@@ -523,7 +538,7 @@ bool ReturnValueNullCheck::isNullCheckedWithIfStmtNotVar(
 
   // check IfStmt's condition is `!return_value_var`
   const Expr *Cond = IfStmtNode->getCond();
-  if (const UnaryOperator *UO = dyn_cast<UnaryOperator>(Cond)) {
+  if (const UnaryOperator *UO = dyn_cast_or_null<UnaryOperator>(Cond)) {
     if (UO->getOpcode() == UO_LNot) {
       const Expr *Inner = UO->getSubExpr()->IgnoreParenImpCasts();
       if (const DeclRefExpr *DRE = dyn_cast<DeclRefExpr>(Inner)) {

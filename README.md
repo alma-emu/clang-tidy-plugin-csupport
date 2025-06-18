@@ -5,11 +5,11 @@ clang-tidy plugin to perform additional checks on C source code.
 
 ## What checks `clang-tidy plugin csupport` do
 
-- csupport-return-value-null-check
+- `csupport-return-value-null-check`
   
-    For functions(malloc, realloc, calloc, fopen) that require a NULL check
+    For functions(malloc, realloc, calloc, fopen) that require the NULL check
    on the return value, 
-    - check if an if statement for a Null check is written on the next line.
+    - check if an if statement for the Null check is written on the next line.
     - check if function's sentence is in the condition of if/while/do-while statement. (This is experiment. the specification is not finalized.)
 
 
@@ -56,23 +56,30 @@ clang-tidy \
   main.c
 ```
 
-```
-# clang-tidy options
+About the clang-tidy arguments
 
- -checks="-*,csupport-*"
-       specify check items as comma-separeted items. a `-` before a check name disables it.
-       wildcards can also be specified with an asterisk.
-           -*                   ... disable all checks.
-           csupport-*           ... enable only `clang-tidy plugin csupport` checks
- -load=/path/to/libclang-tidy-plugin-csupport.so
-       path to plugin
- -p=/path/to/commpile_commands.json
-       path to compile_commands.json for your c project
- main.c
-       target c source file name
-```
+-  `-checks="-*,csupport-*"`
 
-It would be nice to be able to enable it in LSP through clangd, but
-the clang-tidy plugin does not support such usage. So, please add 
+      specify check items as comma-separeted items. the "-" symbol before a check name disables it.
+      wildcards can also be specified with an asterisk.
+      - `-*`                   ... disable all checks.
+      - `csupport-*`           ... enable only `clang-tidy plugin csupport` related checks
+
+-  `-load=/path/to/libclang-tidy-plugin-csupport.so`
+
+      path to plugin
+
+-  `-p=/path/to/commpile_commands.json`
+
+      path to compile_commands.json for your c project
+
+-  `main.c`
+
+      target c source file name
+
+Other Memo
+
+This is not enabled for the clangd server's LSP protocol.
+The clang-tidy plugin does not support such usage. Please add
 `clang-tidy plugin csupport` execution after compiling in your Makefile
 or CMakeLists.txt.
