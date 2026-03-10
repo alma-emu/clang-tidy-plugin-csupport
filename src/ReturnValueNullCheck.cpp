@@ -206,7 +206,7 @@ bool ReturnValueNullCheck::isNullCheckedWithIfStmtVarEqNull(
   // check IfStmt's condition is
   // `return_value_var == NULL` or `NULL == return_value_var`
   const Expr *Cond = IfStmtNode->getCond();
-  if (const BinaryOperator *BinOp = dyn_cast_or_null<BinaryOperator>(Cond)) {
+  if (const BinaryOperator *BinOp = dyn_cast_if_present<BinaryOperator>(Cond)) {
     if (BinOp->getOpcode() == BO_EQ) {
       const auto *LHS = BinOp->getLHS()->IgnoreParenImpCasts();
       const auto *RHS = BinOp->getRHS()->IgnoreParenImpCasts();
@@ -316,7 +316,7 @@ bool ReturnValueNullCheck::isNullCheckedWithIfStmtVarEq0(
   // check IfStmt's condition is
   // `return_value_var == 0` or `0 == return_value_var`
   const Expr *Cond = IfStmtNode->getCond();
-  if (const BinaryOperator *BinOp = dyn_cast_or_null<BinaryOperator>(Cond)) {
+  if (const BinaryOperator *BinOp = dyn_cast_if_present<BinaryOperator>(Cond)) {
     if (BinOp->getOpcode() == BO_EQ) {
       const auto *LHS = BinOp->getLHS()->IgnoreParenImpCasts();
       const auto *RHS = BinOp->getRHS()->IgnoreParenImpCasts();
@@ -422,7 +422,7 @@ bool ReturnValueNullCheck::isNullCheckedWithIfStmtNotVar(
 
   // check IfStmt's condition is `!return_value_var`
   const Expr *Cond = IfStmtNode->getCond();
-  if (const UnaryOperator *UO = dyn_cast_or_null<UnaryOperator>(Cond)) {
+  if (const UnaryOperator *UO = dyn_cast_if_present<UnaryOperator>(Cond)) {
     if (UO->getOpcode() == UO_LNot) {
       const Expr *Inner = UO->getSubExpr()->IgnoreParenImpCasts();
       if (const DeclRefExpr *DRE = dyn_cast<DeclRefExpr>(Inner)) {
