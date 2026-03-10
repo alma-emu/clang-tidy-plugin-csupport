@@ -1,5 +1,6 @@
 #include "ReturnValueNullCheck.h"
 
+#include <tuple>
 #include <vector>
 
 using namespace clang::ast_matchers;
@@ -18,11 +19,9 @@ static const Stmt *
 getFuncLineStmt(const ast_matchers::MatchFinder::MatchResult &Result);
 
 /// get matched function's code block (CompoundStmt) node
-static bool
+static std::tuple<bool, const CompoundStmt *, const Stmt *>
 getCompoundStmt(const ast_matchers::MatchFinder::MatchResult &Result,
-                const Stmt *FuncLineStmtNode,
-                const CompoundStmt **CompoundStmtNode,
-                const Stmt **ReferenceNode);
+                const Stmt *FuncLineStmtNode, const Stmt *ReferenceNode);
 
 //////////////////////////////////////////////////////////////////////////////
 // implementation
@@ -180,10 +179,11 @@ bool ReturnValueNullCheck::isNullCheckedWithIfStmtVarEqNull(
   // get code block (CompoundStmt) node which has FuncLineStmtNode
   const CompoundStmt *CompoundStmtNode;
   {
+    bool res;
     // get CompoundStmt node
     //   if it has `switch` statement, the ReferenceNode will be re-positioned.
-    bool res = getCompoundStmt(Result, FuncLineStmtNode, &CompoundStmtNode,
-                               &ReferenceNode);
+    std::tie(res, CompoundStmtNode, ReferenceNode) =
+        getCompoundStmt(Result, FuncLineStmtNode, ReferenceNode);
     if (!res)
       return false;
   }
@@ -289,10 +289,11 @@ bool ReturnValueNullCheck::isNullCheckedWithIfStmtVarEq0(
   // get code block (CompoundStmt) node which has FuncLineStmtNode
   const CompoundStmt *CompoundStmtNode;
   {
+    bool res;
     // get CompoundStmt node
     //   if it has `switch` statement, the ReferenceNode will be re-positioned.
-    bool res = getCompoundStmt(Result, FuncLineStmtNode, &CompoundStmtNode,
-                               &ReferenceNode);
+    std::tie(res, CompoundStmtNode, ReferenceNode) =
+        getCompoundStmt(Result, FuncLineStmtNode, ReferenceNode);
     if (!res)
       return false;
   }
@@ -395,10 +396,11 @@ bool ReturnValueNullCheck::isNullCheckedWithIfStmtNotVar(
   // get code block (CompoundStmt) node which has FuncLineStmtNode
   const CompoundStmt *CompoundStmtNode;
   {
+    bool res;
     // get CompoundStmt node
     //   if it has `switch` statement, the ReferenceNode will be re-positioned.
-    bool res = getCompoundStmt(Result, FuncLineStmtNode, &CompoundStmtNode,
-                               &ReferenceNode);
+    std::tie(res, CompoundStmtNode, ReferenceNode) =
+        getCompoundStmt(Result, FuncLineStmtNode, ReferenceNode);
     if (!res)
       return false;
   }
@@ -731,17 +733,31 @@ getFuncLineStmt(const ast_matchers::MatchFinder::MatchResult &Result) {
 /// And, the DefaultStmt node for the default label is the same as the
 /// CaseStmt node for the case labels.
 ///
-static bool
+///
+/// \param[in] Result           All information for given match.
+/// \param[in] FuncLineStmtNode Stmt node bound to `funcLineStmt`
+/// \param[in] ReferenceNode    Stmt node which is used to check whether its
+///                             next node is IfStmt or not.
+///
+/// \return
+///  - [0] bool:                success(true) or failure(false)
+///  - [1] const CompoundStmt*: found CompoundStmtNode (nullable on success)
+///                             On failure, returns nullptr.
+///  - [2] const Stmt*:         updated ReferenceNode (not nullable on success)
+///                             On failure, returns nullptr.
+///                             If there's `switch` related stmt, returns
+///                             updated one. If not, returns original one.
+///
+static std::tuple<bool, const CompoundStmt *, const Stmt *>
 getCompoundStmt(const ast_matchers::MatchFinder::MatchResult &Result,
-                const Stmt *FuncLineStmtNode,
-                const CompoundStmt **CompoundStmtNode,
-                const Stmt **ReferenceNode) {
+                const Stmt *FuncLineStmtNode, const Stmt *ReferenceNode) {
+  const CompoundStmt *CompoundStmtNode = nullptr;
 
   // get parent node of FuncLineStmtNode
   auto ParentNodeListOfFuncLineStmt =
       Result.Context->getParents(*FuncLineStmtNode);
   if (ParentNodeListOfFuncLineStmt.empty())
-    return false;
+    return {false, nullptr, nullptr};
   const Stmt *ParentNodeOfFuncLineStmt =
       ParentNodeListOfFuncLineStmt[0].get<Stmt>();
 
@@ -755,21 +771,21 @@ getCompoundStmt(const ast_matchers::MatchFinder::MatchResult &Result,
       isa<DefaultStmt>(ParentNodeOfFuncLineStmt)) {
     const Stmt *CaseStmtRelatedNode = ParentNodeOfFuncLineStmt;
     // ReferenceNode is overwritten by the CaseStmt node.
-    *ReferenceNode = CaseStmtRelatedNode;
+    ReferenceNode = CaseStmtRelatedNode;
     // get the CompoundStmt node which is the parent node of the
     // CaseStmt/DefaultStmt node.
     auto ParentNodeListOfCaseStmt =
         Result.Context->getParents(*CaseStmtRelatedNode);
     if (ParentNodeListOfCaseStmt.empty())
-      return false;
-    *CompoundStmtNode = ParentNodeListOfCaseStmt[0].get<CompoundStmt>();
+      return {false, nullptr, nullptr};
+    CompoundStmtNode = ParentNodeListOfCaseStmt[0].get<CompoundStmt>();
   } else {
     // get the CompoundStmt node which is the parent node of the
     // FuncLineStmtNode
-    *CompoundStmtNode = dyn_cast<CompoundStmt>(ParentNodeOfFuncLineStmt);
+    CompoundStmtNode = dyn_cast<CompoundStmt>(ParentNodeOfFuncLineStmt);
   }
 
-  return true;
+  return {true, CompoundStmtNode, ReferenceNode};
 }
 
 } // namespace clang::tidy::csupport
