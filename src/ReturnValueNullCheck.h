@@ -41,18 +41,6 @@ private:
   /// The specifications for this function have not been finalized.
   bool isNullCheckedWithCondStmtThatSetVar(
       const ast_matchers::MatchFinder::MatchResult &Result);
-
-  /// get matched function's code block (CompoundStmt) node
-  bool getCompoundStmt(const ast_matchers::MatchFinder::MatchResult &Result,
-                       const Stmt *FuncLineStmtNode,
-                       const CompoundStmt **CompoundStmt,
-                       const Stmt **ReferenceNode);
-  /// get return_value_var's VarDecl node
-  const VarDecl *getVarDeclOfReturnValueVar(
-      const ast_matchers::MatchFinder::MatchResult &Result);
-  /// get matched function's Stmt node
-  const Stmt *
-  getFuncLineStmt(const ast_matchers::MatchFinder::MatchResult &Result);
   ///
   void print_diag(const ast_matchers::MatchFinder::MatchResult &Result,
                   const char *message);

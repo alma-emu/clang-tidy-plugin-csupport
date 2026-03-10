@@ -6,6 +6,27 @@ using namespace clang::ast_matchers;
 
 namespace clang::tidy::csupport {
 
+//////////////////////////////////////////////////////////////////////////////
+// prototypes for internal functions
+//////////////////////////////////////////////////////////////////////////////
+/// get return_value_var's VarDecl node
+static const VarDecl *getVarDeclOfReturnValueVar(
+    const ast_matchers::MatchFinder::MatchResult &Result);
+
+/// get matched function's Stmt node
+static const Stmt *
+getFuncLineStmt(const ast_matchers::MatchFinder::MatchResult &Result);
+
+/// get matched function's code block (CompoundStmt) node
+static bool
+getCompoundStmt(const ast_matchers::MatchFinder::MatchResult &Result,
+                const Stmt *FuncLineStmtNode,
+                const CompoundStmt **CompoundStmtNode,
+                const Stmt **ReferenceNode);
+
+//////////////////////////////////////////////////////////////////////////////
+// implementation
+//////////////////////////////////////////////////////////////////////////////
 ///
 ReturnValueNullCheck::ReturnValueNullCheck(StringRef Name,
                                            ClangTidyContext *Context)
@@ -341,8 +362,8 @@ bool ReturnValueNullCheck::isNullCheckedWithIfStmtVarEq0(
 /// ------------------------
 /// CompoundStmt ................ Compound Statement (Code Block) node
 /// |-Stmt ......................   Stmt node bound to `funcLineStmt`
-/// |  - (node)..................     var `buf`, node bound to
-/// `returnValueVar` |    ...
+/// |  - (node)..................     var `buf`, node bound to `returnValueVar`
+/// |    ...
 /// |-IfStmt ....................   If Statement node
 /// | |-UnaryOperator '!' .......
 /// | |  -ImplicitCastExpr ......     implicit type conversion node
@@ -595,6 +616,43 @@ bool ReturnValueNullCheck::isNullCheckedWithCondStmtThatSetVar(
   return false;
 }
 
+///
+void ReturnValueNullCheck::print_diag(
+    const ast_matchers::MatchFinder::MatchResult &Result, const char *message) {
+
+  if (const auto *VRE = Result.Nodes.getNodeAs<DeclRefExpr>("returnValueVar")) {
+    diag(VRE->getLocation(), message);
+  }
+  if (const auto *VD = Result.Nodes.getNodeAs<VarDecl>("returnValueVar")) {
+    diag(VD->getLocation(), message);
+  }
+}
+
+//////////////////////////////////////////////////////////////////////////////
+// internal functions
+//////////////////////////////////////////////////////////////////////////////
+/// get return_value_var's VarDecl node
+static const VarDecl *getVarDeclOfReturnValueVar(
+    const ast_matchers::MatchFinder::MatchResult &Result) {
+
+  const VarDecl *ReturnValueVarDeclNode;
+  if (const DeclRefExpr *VRE =
+          Result.Nodes.getNodeAs<DeclRefExpr>("returnValueVar")) {
+    ReturnValueVarDeclNode = dyn_cast<VarDecl>(VRE->getDecl());
+  } else {
+    ReturnValueVarDeclNode = Result.Nodes.getNodeAs<VarDecl>("returnValueVar");
+  }
+
+  return ReturnValueVarDeclNode;
+}
+
+/// get function's Stmt node
+static const Stmt *
+getFuncLineStmt(const ast_matchers::MatchFinder::MatchResult &Result) {
+
+  return Result.Nodes.getNodeAs<Stmt>("funcLineStmt");
+}
+
 /// get matched function's code block (CompoundStmt) node
 ///
 /// Basically, the CompoundStmt node is the parent node of the FuncLineStmtNode.
@@ -672,10 +730,12 @@ bool ReturnValueNullCheck::isNullCheckedWithCondStmtThatSetVar(
 ///
 /// And, the DefaultStmt node for the default label is the same as the
 /// CaseStmt node for the case labels.
-bool ReturnValueNullCheck::getCompoundStmt(
-    const ast_matchers::MatchFinder::MatchResult &Result,
-    const Stmt *FuncLineStmtNode, const CompoundStmt **CompoundStmtNode,
-    const Stmt **ReferenceNode) {
+///
+static bool
+getCompoundStmt(const ast_matchers::MatchFinder::MatchResult &Result,
+                const Stmt *FuncLineStmtNode,
+                const CompoundStmt **CompoundStmtNode,
+                const Stmt **ReferenceNode) {
 
   // get parent node of FuncLineStmtNode
   auto ParentNodeListOfFuncLineStmt =
@@ -710,40 +770,6 @@ bool ReturnValueNullCheck::getCompoundStmt(
   }
 
   return true;
-}
-
-/// get return_value_var's VarDecl node
-const VarDecl *ReturnValueNullCheck::getVarDeclOfReturnValueVar(
-    const ast_matchers::MatchFinder::MatchResult &Result) {
-
-  const VarDecl *ReturnValueVarDeclNode;
-  if (const DeclRefExpr *VRE =
-          Result.Nodes.getNodeAs<DeclRefExpr>("returnValueVar")) {
-    ReturnValueVarDeclNode = dyn_cast<VarDecl>(VRE->getDecl());
-  } else {
-    ReturnValueVarDeclNode = Result.Nodes.getNodeAs<VarDecl>("returnValueVar");
-  }
-
-  return ReturnValueVarDeclNode;
-}
-
-/// get function's Stmt node
-const Stmt *ReturnValueNullCheck::getFuncLineStmt(
-    const ast_matchers::MatchFinder::MatchResult &Result) {
-
-  return Result.Nodes.getNodeAs<Stmt>("funcLineStmt");
-}
-
-///
-void ReturnValueNullCheck::print_diag(
-    const ast_matchers::MatchFinder::MatchResult &Result, const char *message) {
-
-  if (const auto *VRE = Result.Nodes.getNodeAs<DeclRefExpr>("returnValueVar")) {
-    diag(VRE->getLocation(), message);
-  }
-  if (const auto *VD = Result.Nodes.getNodeAs<VarDecl>("returnValueVar")) {
-    diag(VD->getLocation(), message);
-  }
 }
 
 } // namespace clang::tidy::csupport
